@@ -23,9 +23,21 @@ jobs:
         login-server: ${{ secrets.ACR_NAME_URL }}
         username: ${{ secrets.REGISTRY_USERNAME }}
         password: ${{ secrets.REGISTRY_PASSWORD }}
-    - run: |
+    - name: 'Build and Push Docker Image'
+      run: |
         docker build . -t ${{ secrets.ACR_NAME_URL }}/${{env.REPO_NAME}}:${{ github.sha }}
         docker push ${{ secrets.ACR_NAME_URL }}/${{env.REPO_NAME}}:${{ github.sha }}
+        # Si el workflow fue disparado por un tag tipo vX.Y.Z, también taguea y pushea la imagen con ese tag
+        if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "Tag detectado: ${GITHUB_REF_NAME}. Creando y pusheando imagen con ese tag."
+          docker tag ${{ secrets.ACR_NAME_URL }}/${{env.REPO_NAME}}:${{ github.sha }} ${{ secrets.ACR_NAME_URL }}/${{env.REPO_NAME}}:${GITHUB_REF_NAME}
+          docker push ${{ secrets.ACR_NAME_URL }}/${{env.REPO_NAME}}:${GITHUB_REF_NAME}
+        else
+          echo "No se detectó tag vX.Y.Z. Solo se pushea la imagen con el SHA."
+        fi
+      env:
+        GITHUB_REF_TYPE: ${{ github.ref_type }}
+        GITHUB_REF_NAME: ${{ github.ref_name }}
 
   deploy:
     needs: build
@@ -42,7 +54,7 @@ jobs:
     - name: 'deploy Container Instance'
       uses: azure/aci-deploy@v1
       with:
-        location: eastus
+        location: brazilsouth
         name: azureapp
         resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
         image: ${{ secrets.ACR_NAME_URL }}/${{env.REPO_NAME}}:${{ github.sha }}
@@ -56,4 +68,4 @@ jobs:
     - name: 'logout'
       run: |
         az logout
-      #TODO:Que si viene con una etiqueta o con un tag, me cree una imagen con la etiqueta o con el tag en donde es del tipo vX.Y.Z que se envio y ademas, ver de actualizar las versiones de los scripts.
+      #TODO:Que si viene con una etiqueta o con un tag, me cree una imagen con la etiqueta o con el tag en donde es del tipo vX.Y.Z que se envio y ademas, ver de actualizar las versiones
